@@ -5,8 +5,11 @@
 #   Linux x86_64 wheel, so it cannot be installed on Render's x86_64 native
 #   Python runtime. torch 2.14.1 (same 2.14 series, patch release) ships
 #   Linux x86_64 wheels, and torchvision 0.29.1 pairs with torch>=2.14.0.
+#   Both are pinned to the CPU-only "+cpu" builds from the PyTorch CPU wheel
+#   index below: Render's builder would otherwise pull the multi-GB CUDA
+#   runtime dependencies (nvidia-*, triton) of PyPI's default Linux wheels.
 #   This is a patch-level bump only; the trained model artifact
-#   (training_output/mobilenetv2_ham10000/best_model.pt) is unchanged and
+#   (models/skinvision_efficientnet_b0/best_model.pth) is unchanged and
 #   loads identically under 2.14.x.
 fastapi>=0.115,<1.0
 uvicorn[standard]>=0.30,<1.0
@@ -14,7 +17,8 @@ python-multipart>=0.0.9,<1.0
 python-dotenv>=1.0,<2.0
 numpy>=1.26,<3.0
 Pillow>=10.0,<12.0
-torch==2.14.1
-torchvision==0.29.1
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.14.1+cpu
+torchvision==0.29.1+cpu
 timm>=1.0,<2.0
 psycopg[binary,pool]>=3.2,<4.0
