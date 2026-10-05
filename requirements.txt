@@ -1,0 +1,19 @@
+# FastAPI skin-lesion classification API — production dependencies.
+#
+# torch/torchvision version note (deployment compatibility):
+#   torch 2.14.0 publishes Windows and Linux aarch64 wheels on PyPI but NO
+#   Linux x86_64 wheel, so it cannot be installed on Render's x86_64 native
+#   Python runtime. torch 2.14.1 (same 2.14 series, patch release) ships
+#   Linux x86_64 wheels, and torchvision 0.29.1 pairs with torch>=2.14.0.
+#   This is a patch-level bump only; the trained model artifact
+#   (training_output/mobilenetv2_ham10000/best_model.pt) is unchanged and
+#   loads identically under 2.14.x.
+fastapi>=0.115,<1.0
+uvicorn[standard]>=0.30,<1.0
+python-multipart>=0.0.9,<1.0
+python-dotenv>=1.0,<2.0
+numpy>=1.26,<3.0
+Pillow>=10.0,<12.0
+torch==2.14.1
+torchvision==0.29.1
+psycopg[binary,pool]>=3.2,<4.0

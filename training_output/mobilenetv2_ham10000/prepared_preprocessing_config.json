@@ -1,0 +1,40 @@
+{
+  "class_imbalance_strategy": "class-weighted cross-entropy using class_weights.json from train only",
+  "dataset_root": "C:\\Users\\Lenovo\\Downloads\\Skin-Disease-AI\\dataset\\HAM10000",
+  "input": {
+    "color_mode": "RGB",
+    "image_size": [
+      224,
+      224
+    ],
+    "normalization": {
+      "mean": [
+        0.485,
+        0.456,
+        0.406
+      ],
+      "std": [
+        0.229,
+        0.224,
+        0.225
+      ]
+    },
+    "resize": "aspect-ratio-preserving letterbox"
+  },
+  "metadata_csv": "HAM10000_metadata.csv",
+  "seed": 42,
+  "split_constraint": "same lesion_id and decoded-pixel-identical content remain in one split",
+  "split_ratios": {
+    "test": 0.15,
+    "train": 0.7,
+    "val": 0.15
+  },
+  "training_only_augmentation": [
+    "horizontal flip (p=0.5)",
+    "vertical flip (p=0.5)",
+    "rotation (-20 to +20 degrees)",
+    "brightness (0.85 to 1.15)",
+    "contrast (0.85 to 1.15)"
+  ],
+  "validation_and_test_augmentation": []
+}

@@ -1,0 +1,81 @@
+{
+  "architecture": "MobileNetV2 with frozen ImageNet-pretrained feature extractor and 7-class linear head",
+  "batch_size": 32,
+  "best_epoch": 5,
+  "best_validation_accuracy": 0.44156706507304117,
+  "class_metrics": [
+    {
+      "class_code": "akiec",
+      "class_name": "Actinic keratoses and intraepithelial carcinoma (Bowen disease)",
+      "f1_score": 0.33,
+      "precision": 0.2185430463576159,
+      "recall": 0.673469387755102,
+      "support": 49
+    },
+    {
+      "class_code": "bcc",
+      "class_name": "Basal cell carcinoma",
+      "f1_score": 0.3542857142857143,
+      "precision": 0.3163265306122449,
+      "recall": 0.4025974025974026,
+      "support": 77
+    },
+    {
+      "class_code": "bkl",
+      "class_name": "Benign keratosis-like lesions",
+      "f1_score": 0.3015075376884422,
+      "precision": 0.2597402597402597,
+      "recall": 0.3592814371257485,
+      "support": 167
+    },
+    {
+      "class_code": "df",
+      "class_name": "Dermatofibroma",
+      "f1_score": 0.3181818181818182,
+      "precision": 0.25925925925925924,
+      "recall": 0.4117647058823529,
+      "support": 17
+    },
+    {
+      "class_code": "mel",
+      "class_name": "Melanoma",
+      "f1_score": 0.28173374613003094,
+      "precision": 0.19077568134171907,
+      "recall": 0.5384615384615384,
+      "support": 169
+    },
+    {
+      "class_code": "nv",
+      "class_name": "Melanocytic nevi",
+      "f1_score": 0.5855307640297498,
+      "precision": 0.9135021097046413,
+      "recall": 0.43084577114427863,
+      "support": 1005
+    },
+    {
+      "class_code": "vasc",
+      "class_name": "Vascular lesions",
+      "f1_score": 0.4705882352941176,
+      "precision": 0.3404255319148936,
+      "recall": 0.7619047619047619,
+      "support": 21
+    }
+  ],
+  "device": "cpu",
+  "early_stopping": {
+    "metric": "validation accuracy",
+    "patience": 2
+  },
+  "epochs_completed": 7,
+  "epochs_requested": 8,
+  "learning_rate_scheduler": "ReduceLROnPlateau(validation accuracy, factor=0.5, patience=1)",
+  "loss": "class-weighted cross entropy",
+  "optimizer": "AdamW",
+  "parameter_count": {
+    "total": 2232839,
+    "trainable": 8967
+  },
+  "test_accuracy": 0.44584717607973423,
+  "test_images_evaluated": 1505,
+  "training_time_seconds": 37501.5001066
+}

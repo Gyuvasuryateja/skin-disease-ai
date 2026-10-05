@@ -1,0 +1,31 @@
+# Local secrets and credentials. Never commit real environment files.
+.env
+.env.*
+!.env.example
+
+# Python caches and virtual environments
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Node / frontend build artifacts
+node_modules/
+frontend/dist/
+
+# Dataset (approx. 8 GB; regenerable and must never enter the repository).
+dataset/
+
+# NOTE: training_output/ is intentionally NOT ignored. It contains the
+# trained model artifact (best_model.pt, ~9 MB) plus its class-mapping and
+# preprocessing metadata, which the deployed API requires at runtime.
+
+# Local logs and test artifacts
+*.log
+api_endpoint_test_results.json
+db_operations_test_results.json
+model_inference_test_report.md
+
+# Operating-system noise
+.DS_Store
+Thumbs.db

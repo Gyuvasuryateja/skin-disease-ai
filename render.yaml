@@ -1,0 +1,65 @@
+# Render Blueprint — Skin-Lesion AI (educational/research classification)
+#
+# Deploys three resources from this repository:
+#   1. skin-lesion-db       — PostgreSQL database for prediction history
+#   2. skin-lesion-ai-api   — FastAPI web service running the trained
+#                             MobileNetV2 model with Grad-CAM explanations
+#   3. skin-lesion-ai-site  — static React site (Vite build)
+#
+# Values you will be asked for in the Render dashboard on first deploy:
+#   - CORS_ORIGINS      on the API service: the final URL of the static site,
+#                       e.g. https://skin-lesion-ai-site.onrender.com
+#   - VITE_API_BASE_URL on the static site: the final URL of the API service,
+#                       e.g. https://skin-lesion-ai-api.onrender.com
+# If a rendered URL already ends in a random suffix (name collision), use that
+# exact URL instead of the one suggested above.
+
+databases:
+  - name: skin-lesion-db
+    databaseName: skin_lesion_ai
+    user: skin_lesion_app
+    # Render's free PostgreSQL tier expires ~30 days after creation.
+    # For a permanent deployment use a paid plan such as: basic-256mb
+    plan: free
+
+services:
+  # ---- FastAPI backend -------------------------------------------------
+  - type: web
+    name: skin-lesion-ai-api
+    runtime: python
+    # torch + FastAPI + Grad-CAM image processing is tight on 512 MB.
+    # Starter shares free's 512 MB; upgrade to standard (2 GB) if the
+    # service is OOM-killed or health checks time out.
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    # api.py uses flat imports (from gradcam import ...), so uvicorn must
+    # run from the src/ directory. Model paths are anchored to the repo
+    # root by the app itself, independent of the working directory.
+    startCommand: cd src && uvicorn api:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: DATABASE_URL
+        fromDatabase:
+          name: skin-lesion-db
+          property: connectionString
+      # Comma-separated list of allowed browser origins for the API.
+      # Set this to the deployed static-site URL when prompted.
+      - key: CORS_ORIGINS
+        sync: false
+
+  # ---- React static frontend --------------------------------------------
+  - type: web
+    name: skin-lesion-ai-site
+    runtime: static
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: NODE_VERSION
+        value: 24.13.0
+      # Baked into the static bundle at build time. Set this to the
+      # deployed API URL when prompted, e.g. https://skin-lesion-ai-api.onrender.com
+      - key: VITE_API_BASE_URL
+        sync: false
