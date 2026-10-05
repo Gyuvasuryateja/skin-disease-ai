@@ -16,4 +16,5 @@ numpy>=1.26,<3.0
 Pillow>=10.0,<12.0
 torch==2.14.1
 torchvision==0.29.1
+timm>=1.0,<2.0
 psycopg[binary,pool]>=3.2,<4.0

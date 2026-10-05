@@ -1,7 +1,9 @@
 """FastAPI backend for educational/research skin-lesion image classification.
 
-The service loads one pre-trained MobileNetV2 checkpoint and its persisted
-metadata at startup. It is not a medical diagnostic tool.
+The service loads one pre-trained classifier checkpoint (the benchmarked
+SkinVision EfficientNet-B0 model by default; the v1 MobileNetV2 model remains
+available as a backup via SKIN_MODEL_PATH) and its persisted metadata at
+startup. It is not a medical diagnostic tool.
 """
 
 from __future__ import annotations
@@ -68,11 +70,10 @@ except ImportError as _db_import_error:
     def sanitize_image_filename(filename: str | None) -> str:  # type: ignore[misc]
         return (filename or "unnamed-image")[-200:]
 
-DEFAULT_MODEL_PATH = PROJECT_ROOT / "training_output" / "mobilenetv2_ham10000" / "best_model.pt"
-DEFAULT_MAPPING_PATH = PROJECT_ROOT / "training_output" / "mobilenetv2_ham10000" / "class_label_mapping.json"
-DEFAULT_PREPROCESSING_PATH = (
-    PROJECT_ROOT / "training_output" / "mobilenetv2_ham10000" / "inference_preprocessing.json"
-)
+DEFAULT_MODEL_DIR = PROJECT_ROOT / "models" / "skinvision_efficientnet_b0"
+DEFAULT_MODEL_PATH = DEFAULT_MODEL_DIR / "best_model.pth"
+DEFAULT_MAPPING_PATH = DEFAULT_MODEL_DIR / "class_label_mapping.json"
+DEFAULT_PREPROCESSING_PATH = DEFAULT_MODEL_DIR / "inference_preprocessing.json"
 DEFAULT_CORS_ORIGINS = "http://localhost:3000,http://localhost:5173"
 ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp"}
 ALLOWED_IMAGE_FORMATS = {"JPEG", "PNG", "WEBP"}
@@ -131,6 +132,10 @@ def load_settings() -> Settings:
 class HealthResponse(BaseModel):
     status: str
     model_loaded: bool
+    model_architecture: str = Field(
+        default="",
+        description="Architecture of the loaded checkpoint ('' when no model is loaded).",
+    )
     history_storage: str = Field(
         description="'ready', 'not_configured', or 'unavailable'. Predictions work in all states."
     )
@@ -196,6 +201,7 @@ class ClearHistoryResponse(BaseModel):
 @dataclass
 class SkinLesionClassifier:
     model: nn.Module
+    architecture: str
     ordered_labels: list[str]
     preprocessing: PreprocessingConfig
     gradcam_target_layer: nn.Module | None
@@ -289,7 +295,9 @@ def load_classifier(settings: Settings) -> SkinLesionClassifier:
     if preprocessing != checkpoint_preprocessing:
         raise ValueError("Saved inference preprocessing does not match the model checkpoint.")
 
-    model = build_model(checkpoint["num_classes"], checkpoint["model_state_dict"])
+    model = build_model(
+        checkpoint["architecture"], checkpoint["num_classes"], checkpoint["model_state_dict"]
+    )
     try:
         gradcam_target_layer = resolve_gradcam_target_layer(model)
         gradcam_error = None
@@ -300,6 +308,7 @@ def load_classifier(settings: Settings) -> SkinLesionClassifier:
         gradcam_error = str(exc)
     return SkinLesionClassifier(
         model=model,
+        architecture=checkpoint["architecture"],
         ordered_labels=ordered_labels,
         preprocessing=preprocessing,
         gradcam_target_layer=gradcam_target_layer,
@@ -395,7 +404,11 @@ def create_app() -> FastAPI:
         app.state.history_error = None
         try:
             app.state.classifier = load_classifier(settings)
-            LOGGER.info("Skin-lesion model loaded once during startup from %s", settings.model_path)
+            LOGGER.info(
+                "Skin-lesion model (%s) loaded once during startup from %s",
+                app.state.classifier.architecture,
+                settings.model_path,
+            )
         except Exception as exc:
             app.state.model_error = str(exc)
             LOGGER.exception("Skin-lesion model could not be loaded during startup")
@@ -493,6 +506,7 @@ def create_app() -> FastAPI:
         return HealthResponse(
             status="ok",
             model_loaded=True,
+            model_architecture=app.state.classifier.architecture,
             history_storage=app.state.history_status,
             message="Educational/research image-classification model is ready.",
         )

@@ -1,4 +1,4 @@
-"""Grad-CAM generation for the supported MobileNetV2 skin-lesion classifier.
+"""Grad-CAM generation for the supported skin-lesion classifiers.
 
 The implementation uses the same normalized model input as inference. It does
 not alter model weights or train the model. Generated maps visualize model
@@ -42,26 +42,31 @@ class GradCAMResult:
 
 
 def resolve_gradcam_target_layer(model: nn.Module) -> nn.Module:
-    """Return the final spatial MobileNetV2 feature block used for Grad-CAM.
+    """Return the final convolutional feature layer of a supported classifier.
 
-    MobileNetV2 performs global pooling immediately after ``features[-1]``.
-    This final Conv-BN-ReLU block therefore retains the last spatial activation
-    map while being directly relevant to the classifier logits.
+    MobileNetV2 performs global pooling immediately after ``features[-1]``, so
+    that final Conv-BN-ReLU block retains the last spatial activation map while
+    being directly relevant to the classifier logits. The timm EfficientNet-B0
+    backbone performs global pooling immediately after ``conv_head``, making
+    ``conv_head`` its final spatial convolution with the same property.
     """
-    if not isinstance(model, MobileNetV2):
-        raise UnsupportedGradCAMModelError(
-            "Grad-CAM is currently supported only for the deployed MobileNetV2 architecture."
-        )
-    if not hasattr(model, "features") or len(model.features) == 0:
-        raise UnsupportedGradCAMModelError(
-            "The MobileNetV2 model has no feature block available for Grad-CAM."
-        )
-    target_layer = model.features[-1]
-    if not any(isinstance(module, nn.Conv2d) for module in target_layer.modules()):
-        raise UnsupportedGradCAMModelError(
-            "The final MobileNetV2 feature block does not contain a convolutional layer."
-        )
-    return target_layer
+    if isinstance(model, MobileNetV2):
+        if not hasattr(model, "features") or len(model.features) == 0:
+            raise UnsupportedGradCAMModelError(
+                "The MobileNetV2 model has no feature block available for Grad-CAM."
+            )
+        target_layer = model.features[-1]
+        if not any(isinstance(module, nn.Conv2d) for module in target_layer.modules()):
+            raise UnsupportedGradCAMModelError(
+                "The final MobileNetV2 feature block does not contain a convolutional layer."
+            )
+        return target_layer
+    conv_head = getattr(model, "conv_head", None)
+    if isinstance(conv_head, nn.Conv2d):
+        return conv_head
+    raise UnsupportedGradCAMModelError(
+        "Grad-CAM is supported only for the deployed MobileNetV2 and EfficientNet-B0 architectures."
+    )
 
 
 def generate_predicted_class_gradcam(
@@ -164,7 +169,13 @@ def map_cam_to_original_image(
     original_size: tuple[int, int],
     preprocessing: PreprocessingConfig,
 ) -> Image.Image:
-    """Remove inference letterbox padding and align the CAM to the source image."""
+    """Align a square CAM to the source image using the inference resize policy.
+
+    Letterbox policy: the resized content was centered on the square canvas,
+    so the CAM is cropped to the letterboxed area before resizing. Direct
+    policy: the image was stretched to the square input, so the full CAM is
+    resized straight back to the original aspect ratio.
+    """
     if cam.ndim != 2 or not np.isfinite(cam).all():
         raise GradCAMError("Grad-CAM map must be a finite two-dimensional array.")
     original_width, original_height = original_size
@@ -175,6 +186,15 @@ def map_cam_to_original_image(
     cam_image = Image.fromarray(
         np.rint(np.clip(cam, 0.0, 1.0) * 255.0).astype(np.uint8), mode="L"
     ).resize((image_size, image_size), Image.Resampling.BILINEAR)
+
+    if preprocessing.resize == "direct":
+        return cam_image.resize(
+            (original_width, original_height), Image.Resampling.BILINEAR
+        )
+    if preprocessing.resize != "letterbox":
+        raise GradCAMError(
+            f"Grad-CAM does not recognize the '{preprocessing.resize}' resize policy."
+        )
 
     scale = min(image_size / original_width, image_size / original_height)
     resized_width = max(1, round(original_width * scale))

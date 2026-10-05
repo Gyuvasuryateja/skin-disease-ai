@@ -25,6 +25,10 @@ class PreprocessingConfig:
     mean: tuple[float, float, float] = (0.485, 0.456, 0.406)
     std: tuple[float, float, float] = (0.229, 0.224, 0.225)
     padding_color: tuple[int, int, int] = (0, 0, 0)
+    # "letterbox" preserves aspect ratio with padding (the v1 MobileNetV2
+    # pipeline); "direct" stretches to the square model input with bilinear
+    # resampling (the benchmarked SkinVision EfficientNet-B0 pipeline).
+    resize: str = "letterbox"
 
 
 @dataclass(frozen=True)
@@ -55,6 +59,22 @@ def resize_and_pad(image: Image.Image, config: PreprocessingConfig) -> Image.Ima
     return canvas
 
 
+def resize_direct(image: Image.Image, config: PreprocessingConfig) -> Image.Image:
+    """Stretch an image to the square model input with bilinear resampling."""
+    return image.convert("RGB").resize(
+        (config.image_size, config.image_size), Image.Resampling.BILINEAR
+    )
+
+
+def prepare_image(image: Image.Image, config: PreprocessingConfig) -> Image.Image:
+    """Apply the configured resize policy (letterbox or direct square resize)."""
+    if config.resize == "direct":
+        return resize_direct(image, config)
+    if config.resize == "letterbox":
+        return resize_and_pad(image, config)
+    raise ValueError(f"Unknown resize policy: {config.resize}")
+
+
 def apply_training_augmentation(image: Image.Image, rng: np.random.Generator) -> Image.Image:
     """Apply mild, dermoscopy-appropriate random augmentation to a training image only."""
     image = image.convert("RGB")
@@ -75,8 +95,8 @@ def apply_training_augmentation(image: Image.Image, rng: np.random.Generator) ->
 
 
 def normalize_image(image: Image.Image, config: PreprocessingConfig) -> np.ndarray:
-    """Letterbox, scale to [0, 1], normalize, and return C×H×W float32 data."""
-    image = resize_and_pad(image, config)
+    """Resize per the configured policy, scale to [0, 1], normalize, return C×H×W float32."""
+    image = prepare_image(image, config)
     array = np.asarray(image, dtype=np.float32) / 255.0
     array = (array - np.asarray(config.mean, dtype=np.float32)) / np.asarray(
         config.std, dtype=np.float32

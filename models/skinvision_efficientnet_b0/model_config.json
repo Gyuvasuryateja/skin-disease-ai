@@ -1,0 +1,37 @@
+{
+  "architecture": "EfficientNet-B0",
+  "num_classes": 7,
+  "weights_key_prefix": "backbone.",
+  "label_to_index": {
+    "akiec": 0,
+    "bcc": 1,
+    "bkl": 2,
+    "df": 3,
+    "mel": 4,
+    "nv": 5,
+    "vasc": 6
+  },
+  "preprocessing": {
+    "image_size": 224,
+    "mean": [
+      0.485,
+      0.456,
+      0.406
+    ],
+    "std": [
+      0.229,
+      0.224,
+      0.225
+    ],
+    "padding_color": [
+      0,
+      0,
+      0
+    ],
+    "resize": "direct"
+  },
+  "source": "https://huggingface.co/pthennakoon25/skinvision-ai-model",
+  "source_file": "best_model.pth",
+  "license": "MIT",
+  "notes": "Raw timm efficientnet_b0 state dict (all keys prefixed 'backbone.'). Class order verified identical to the project order from the authors src/config.py. Preprocessing verified from the authors src/transforms.py and reproduced exactly as used in the 2026-10-05 benchmark (direct bilinear resize to 224x224, /255, ImageNet normalization). The MobileNetV2 v1 checkpoint in training_output/mobilenetv2_ham10000/ is retained as the backup model."
+}

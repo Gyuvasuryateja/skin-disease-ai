@@ -1,6 +1,6 @@
 """Endpoint tests for the skin-lesion API, including predicted-class Grad-CAM.
 
-Run after train_mobilenetv2.py has produced its artifacts:
+Run after the model artifacts exist (default: models/skinvision_efficientnet_b0/):
 
     python src/test_api_endpoints.py
 
@@ -26,7 +26,7 @@ from api import app  # noqa: E402
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-MODEL_PATH = PROJECT_ROOT / "training_output" / "mobilenetv2_ham10000" / "best_model.pt"
+MODEL_PATH = PROJECT_ROOT / "models" / "skinvision_efficientnet_b0" / "best_model.pth"
 MANIFEST_PATH = PROJECT_ROOT / "dataset" / "prepared" / "split_manifest.csv"
 DATASET_ROOT = PROJECT_ROOT / "dataset" / "HAM10000"
 EXPECTED_CLASSES = {"akiec", "bcc", "bkl", "df", "mel", "nv", "vasc"}
@@ -79,7 +79,7 @@ def check_prediction_payload(payload: dict) -> None:
 def main() -> int:
     if not MODEL_PATH.is_file():
         print(f"Trained checkpoint not found: {MODEL_PATH}")
-        print("Run src/train_mobilenetv2.py first; these tests require real trained artifacts.")
+        print("Restore the model artifacts first; these tests require real trained weights.")
         return 2
 
     results: list[dict[str, object]] = []

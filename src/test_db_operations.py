@@ -4,7 +4,7 @@ Prerequisites:
 
 - A reachable PostgreSQL server configured through DATABASE_URL (or PG* variables).
   Run ``python src/init_database.py`` first to create the database and schema.
-- The trained checkpoint (``training_output/mobilenetv2_ham10000/best_model.pt``)
+- The trained checkpoint (``models/skinvision_efficientnet_b0/best_model.pth``)
   for the API-level tests.
 
 WARNING: these tests DELETE all rows in the predictions table. Point them at a
@@ -37,7 +37,7 @@ from db import (  # noqa: E402
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-MODEL_PATH = PROJECT_ROOT / "training_output" / "mobilenetv2_ham10000" / "best_model.pt"
+MODEL_PATH = PROJECT_ROOT / "models" / "skinvision_efficientnet_b0" / "best_model.pth"
 MANIFEST_PATH = PROJECT_ROOT / "dataset" / "prepared" / "split_manifest.csv"
 DATASET_ROOT = PROJECT_ROOT / "dataset" / "HAM10000"
 ENV_KEYS = ("DATABASE_URL", "PGHOST", "PGPORT", "PGDATABASE", "PGUSER", "PGPASSWORD")
@@ -282,7 +282,7 @@ def main() -> int:
 
     if not MODEL_PATH.is_file():
         print(f"Trained checkpoint not found: {MODEL_PATH}")
-        print("Run src/train_mobilenetv2.py first; API-level tests require trained artifacts.")
+        print("Restore the model artifacts first; API-level tests require trained weights.")
         return 2
 
     conninfo = resolve_conninfo()

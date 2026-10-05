@@ -3,7 +3,9 @@
 # Deploys three resources from this repository:
 #   1. skin-lesion-db       — PostgreSQL database for prediction history
 #   2. skin-lesion-ai-api   — FastAPI web service running the trained
-#                             MobileNetV2 model with Grad-CAM explanations
+#                             SkinVision EfficientNet-B0 model (timm) with
+#                             Grad-CAM explanations; the original MobileNetV2
+#                             baseline remains in the repo as a backup
 #   3. skin-lesion-ai-site  — static React site (Vite build)
 #
 # Values you will be asked for in the Render dashboard on first deploy:

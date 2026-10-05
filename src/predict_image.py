@@ -1,8 +1,9 @@
 """Run one educational/research skin-lesion image classification prediction.
 
-This utility loads the MobileNetV2 checkpoint produced by train_mobilenetv2.py,
-then prints the predicted HAM10000 class, its confidence, and probabilities for
-all classes. It is not a medical diagnosis tool.
+This utility loads a project checkpoint (the MobileNetV2 v1 model or the
+benchmarked SkinVision EfficientNet-B0 model), then prints the predicted
+HAM10000 class, its confidence, and probabilities for all classes. It is not
+a medical diagnosis tool.
 """
 
 from __future__ import annotations
@@ -24,7 +25,8 @@ from ham10000_data import PreprocessingConfig, normalize_image
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_MODEL_PATH = PROJECT_ROOT / "training_output" / "mobilenetv2_ham10000" / "best_model.pt"
+DEFAULT_MODEL_DIR = PROJECT_ROOT / "models" / "skinvision_efficientnet_b0"
+DEFAULT_MODEL_PATH = DEFAULT_MODEL_DIR / "best_model.pth"
 CLASS_NAMES = {
     "akiec": "Actinic keratoses and intraepithelial carcinoma (Bowen disease)",
     "bcc": "Basal cell carcinoma",
@@ -33,6 +35,14 @@ CLASS_NAMES = {
     "mel": "Melanoma",
     "nv": "Melanocytic nevi",
     "vasc": "Vascular lesions",
+}
+SUPPORTED_ARCHITECTURES = {"MobileNetV2", "EfficientNet-B0"}
+STRUCTURED_CHECKPOINT_FIELDS = {
+    "architecture",
+    "model_state_dict",
+    "num_classes",
+    "label_to_index",
+    "preprocessing",
 }
 NOTICE = (
     "Educational and research use only: this is an AI image-classification prediction, "
@@ -91,24 +101,91 @@ def load_json_file(path: Path, description: str) -> Any:
 
 
 def load_checkpoint(model_path: Path) -> dict[str, Any]:
+    """Load a model checkpoint and normalize it to the project's metadata schema.
+
+    Two checkpoint layouts are supported:
+
+    * The structured project checkpoint written by train_mobilenetv2.py
+      (``architecture``, ``model_state_dict``, ``num_classes``,
+      ``label_to_index``, ``preprocessing``) — used by the MobileNetV2 v1 model.
+    * A raw ``timm`` state dict whose keys all carry the prefix recorded in the
+      ``model_config.json`` sidecar — used by the SkinVision EfficientNet-B0
+      model, whose exact published weights file is preserved bit-for-bit. All
+      metadata for a raw checkpoint comes from the sidecar, never from guesses.
+    """
     if not model_path.is_file():
         raise FileNotFoundError(f"Model checkpoint was not found: {model_path}")
     checkpoint = torch.load(model_path, map_location="cpu", weights_only=True)
-    required_fields = {
-        "architecture",
-        "model_state_dict",
-        "num_classes",
-        "label_to_index",
-        "preprocessing",
-    }
-    missing_fields = required_fields.difference(checkpoint)
-    if missing_fields:
-        raise ValueError(f"Checkpoint is missing required fields: {sorted(missing_fields)}")
-    if checkpoint["architecture"] != "MobileNetV2":
-        raise ValueError(f"Unsupported checkpoint architecture: {checkpoint['architecture']}")
-    if not isinstance(checkpoint["num_classes"], int) or checkpoint["num_classes"] < 1:
+    if not isinstance(checkpoint, dict):
+        raise ValueError("Model checkpoint must contain a dictionary of tensors/metadata.")
+
+    if STRUCTURED_CHECKPOINT_FIELDS.issubset(checkpoint):
+        return _validate_checkpoint_metadata(
+            architecture=checkpoint["architecture"],
+            model_state_dict=checkpoint["model_state_dict"],
+            num_classes=checkpoint["num_classes"],
+            label_to_index=checkpoint["label_to_index"],
+            preprocessing=checkpoint["preprocessing"],
+        )
+
+    # Raw timm state dict: every entry must be a tensor, and a sidecar
+    # model_config.json (next to the weights) must supply the metadata.
+    if not checkpoint or not all(isinstance(value, torch.Tensor) for value in checkpoint.values()):
+        raise ValueError(
+            "Unsupported checkpoint layout: expected a structured project "
+            "checkpoint or a raw state-dict checkpoint with a model_config.json sidecar."
+        )
+    sidecar_path = model_path.with_name("model_config.json")
+    if not sidecar_path.is_file():
+        raise FileNotFoundError(
+            f"A raw state-dict checkpoint requires its metadata sidecar: {sidecar_path}"
+        )
+    sidecar = load_json_file(sidecar_path, "Model configuration sidecar")
+    if not isinstance(sidecar, dict):
+        raise ValueError("Model configuration sidecar must be a JSON object.")
+    prefix = sidecar.get("weights_key_prefix")
+    if not isinstance(prefix, str) or not prefix:
+        raise ValueError("Model configuration sidecar must define 'weights_key_prefix'.")
+    unexpected = [key for key in checkpoint if not key.startswith(prefix)]
+    if unexpected:
+        raise ValueError(
+            f"Raw checkpoint contains {len(unexpected)} keys without the '{prefix}' prefix, "
+            f"e.g. {unexpected[0]!r}; refusing to load mismatched weights."
+        )
+    return _validate_checkpoint_metadata(
+        architecture=sidecar["architecture"],
+        model_state_dict=checkpoint,
+        num_classes=sidecar["num_classes"],
+        label_to_index=sidecar["label_to_index"],
+        preprocessing=sidecar["preprocessing"],
+    )
+
+
+def _validate_checkpoint_metadata(
+    architecture: Any,
+    model_state_dict: Any,
+    num_classes: Any,
+    label_to_index: Any,
+    preprocessing: Any,
+) -> dict[str, Any]:
+    if not isinstance(architecture, str) or architecture not in SUPPORTED_ARCHITECTURES:
+        raise ValueError(
+            f"Unsupported checkpoint architecture: {architecture!r}. "
+            f"Supported: {sorted(SUPPORTED_ARCHITECTURES)}"
+        )
+    if not isinstance(model_state_dict, dict) or not model_state_dict:
+        raise ValueError("Checkpoint model_state_dict must be a non-empty dictionary.")
+    if not all(isinstance(value, torch.Tensor) for value in model_state_dict.values()):
+        raise ValueError("Checkpoint model_state_dict must map names to tensors.")
+    if not isinstance(num_classes, int) or num_classes < 1:
         raise ValueError("Checkpoint num_classes must be a positive integer.")
-    return checkpoint
+    return {
+        "architecture": architecture,
+        "model_state_dict": model_state_dict,
+        "num_classes": num_classes,
+        "label_to_index": label_to_index,
+        "preprocessing": preprocessing,
+    }
 
 
 def parse_label_mapping(raw_mapping: Any, num_classes: int) -> tuple[dict[str, int], list[str]]:
@@ -130,11 +207,15 @@ def parse_preprocessing(raw_config: Any) -> PreprocessingConfig:
     missing_fields = required_fields.difference(raw_config)
     if missing_fields:
         raise ValueError(f"Checkpoint preprocessing is missing: {sorted(missing_fields)}")
+    resize_policy = raw_config.get("resize", "letterbox")
+    if resize_policy not in {"letterbox", "direct"}:
+        raise ValueError(f"Checkpoint preprocessing resize policy is unsupported: {resize_policy!r}")
     config = PreprocessingConfig(
         image_size=int(raw_config["image_size"]),
         mean=tuple(float(value) for value in raw_config["mean"]),
         std=tuple(float(value) for value in raw_config["std"]),
         padding_color=tuple(int(value) for value in raw_config["padding_color"]),
+        resize=resize_policy,
     )
     if (
         config.image_size < 1
@@ -165,9 +246,14 @@ def parse_inference_preprocessing(raw_config: Any) -> PreprocessingConfig:
         raise ValueError(f"Saved inference preprocessing is missing: {sorted(missing_fields)}")
     image_size = raw_config["image_size"]
     normalization = raw_config["normalization"]
+    resize_policies = {
+        "aspect-ratio-preserving letterbox with black padding": "letterbox",
+        "direct square resize (aspect ratio not preserved)": "direct",
+    }
+    resize_policy = resize_policies.get(raw_config["resize"])
     if (
         raw_config["color_mode"] != "RGB"
-        or raw_config["resize"] != "aspect-ratio-preserving letterbox with black padding"
+        or resize_policy is None
         or raw_config["interpolation"] != "Pillow Image.Resampling.BILINEAR"
         or raw_config["tensor_layout"] != "C,H,W"
         or not isinstance(image_size, list)
@@ -182,16 +268,45 @@ def parse_inference_preprocessing(raw_config: Any) -> PreprocessingConfig:
             "mean": normalization.get("mean"),
             "std": normalization.get("std"),
             "padding_color": raw_config["padding_color"],
+            "resize": resize_policy,
         }
     )
 
 
-def build_model(num_classes: int, state_dict: dict[str, Any]) -> nn.Module:
-    model = mobilenet_v2(weights=None)
-    model.classifier[1] = nn.Linear(model.last_channel, num_classes)
-    model.load_state_dict(state_dict)
+def build_efficientnet_b0(num_classes: int, state_dict: dict[str, Any]) -> nn.Module:
+    """Build a timm EfficientNet-B0 and load the prefixed SkinVision weights.
+
+    The published SkinVision checkpoint stores every key under a ``backbone.``
+    prefix (e.g. ``backbone.conv_stem.weight``); the prefix is stripped here so
+    the weights land in the standard timm module tree unchanged otherwise.
+    """
+    try:
+        import timm
+    except ImportError as exc:
+        raise RuntimeError(
+            "The EfficientNet-B0 model requires the 'timm' package. Install requirements.txt."
+        ) from exc
+    model = timm.create_model("efficientnet_b0", pretrained=False, num_classes=num_classes)
+    cleaned_state_dict = {
+        (key[len("backbone."):] if key.startswith("backbone.") else key): value
+        for key, value in state_dict.items()
+    }
+    model.load_state_dict(cleaned_state_dict)
     model.eval()
     return model
+
+
+def build_model(architecture: str, num_classes: int, state_dict: dict[str, Any]) -> nn.Module:
+    """Build one of the supported architectures and load its trained weights."""
+    if architecture == "MobileNetV2":
+        model = mobilenet_v2(weights=None)
+        model.classifier[1] = nn.Linear(model.last_channel, num_classes)
+        model.load_state_dict(state_dict)
+        model.eval()
+        return model
+    if architecture == "EfficientNet-B0":
+        return build_efficientnet_b0(num_classes, state_dict)
+    raise ValueError(f"Unsupported model architecture: {architecture!r}")
 
 
 def validate_image_file(image_path: Path) -> None:
@@ -301,7 +416,9 @@ def main() -> int:
         if preprocessing != checkpoint_preprocessing:
             raise ValueError("Saved inference preprocessing does not match the model checkpoint.")
 
-        model = build_model(checkpoint["num_classes"], checkpoint["model_state_dict"])
+        model = build_model(
+            checkpoint["architecture"], checkpoint["num_classes"], checkpoint["model_state_dict"]
+        )
         probabilities = predict_image(image_path, model, preprocessing)
         result = build_result(image_path, model_path, ordered_labels, probabilities, preprocessing)
         if args.output_json:
